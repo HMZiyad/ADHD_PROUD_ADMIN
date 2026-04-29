@@ -10,6 +10,10 @@ const manrope = Manrope({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Admin Dashboard | Elnataan',
   description: 'Next-generation admin dashboard built with Next.js and Shadcn',
+  icons: {
+    icon: '/logo_dark.png',
+    apple: '/logo_dark.png',
+  },
 };
 
 export default function RootLayout({
