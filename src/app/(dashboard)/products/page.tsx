@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Box, UploadCloud, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Box, UploadCloud, AlertTriangle, RefreshCw, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,21 +46,30 @@ export default function ProductsPage() {
   const [addName, setAddName] = useState('');
   const [addCategory, setAddCategory] = useState('');
   const [addPrice, setAddPrice] = useState('');
-  const [addStock, setAddStock] = useState('');
+  const [addStock, setAddStock] = useState('0');
   const [addSizes, setAddSizes] = useState('S,M,L,XL');
+  const [addColors, setAddColors] = useState('');
+  const [addShortDescription, setAddShortDescription] = useState('');
   const [addDescription, setAddDescription] = useState('');
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Edit modal local state
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editStock, setEditStock] = useState('');
   const [editSizes, setEditSizes] = useState('');
+  const [editColors, setEditColors] = useState('');
+  const [editShortDescription, setEditShortDescription] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [editStatus, setEditStatus] = useState<StatusType>('In Stock');
+  const [addVariants, setAddVariants] = useState<{ size: string; stock: number }[]>([
+    { size: 'S', stock: 0 }, { size: 'M', stock: 0 }, { size: 'L', stock: 0 }, { size: 'XL', stock: 0 }
+  ]);
   const [editVariants, setEditVariants] = useState<{ size: string; stock: number }[]>([]);
-  const [editImagePreview, setEditImagePreview] = useState<string>('');
-  const [editImageFile, setEditImageFile] = useState<File | null>(null);
+  const [editImagePreviews, setEditImagePreviews] = useState<string[]>([]);
+  const [editImageFiles, setEditImageFiles] = useState<File[]>([]);
   const editFileRef = useRef<HTMLInputElement>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────────
@@ -109,50 +118,76 @@ export default function ProductsPage() {
   // ── Helpers ───────────────────────────────────────────────────────────────────
   function resetAddForm() {
     setAddName(''); setAddCategory(''); setAddPrice('');
-    setAddStock(''); setAddSizes('S,M,L,XL'); setAddDescription('');
-    setImagePreview(null); setImageFile(null);
+    setAddStock(''); setAddSizes('S,M,L,XL'); setAddColors(''); 
+    setAddVariants([{size: 'S', stock: 0}, {size: 'M', stock: 0}, {size: 'L', stock: 0}, {size: 'XL', stock: 0}]);
+    setAddShortDescription(''); setAddDescription('');
+    setImagePreviews([]); setImageFiles([]);
   }
 
   function openEdit(p: AdminProduct) {
     setEditProduct(p);
-    setEditPrice(String(p.price));
-    setEditStock(String(p.inventory));
-    setEditSizes(p.variants.map(v => v.size).join(','));
-    setEditStatus(p.inventory > 0 ? 'In Stock' : 'Out of Stock');
-    setEditVariants(p.variants.map(v => ({ ...v })));
-    setEditImagePreview(p.image);
-    setEditImageFile(null);
+    setEditName(p.name || '');
+    setEditCategory(p.category || '');
+    setEditPrice(String(p.price || '0'));
+    setEditStock(String(p.inventory || '0'));
+    setEditSizes(p.variants?.map(v => v.size).join(',') || 'S,M,L,XL');
+    setEditColors(p.color_list?.map((c: any) => c.color_hex).join(',') || '');
+    setEditShortDescription(p.short_description || '');
+    setEditDescription(p.description || '');
+    setEditStatus((p.inventory || 0) > 0 ? 'In Stock' : 'Out of Stock');
+    setEditVariants(p.variants?.map(v => ({ ...v })) || []);
+    setEditImagePreviews(p.images?.map((img: any) => img.image) || []);
+    setEditImageFiles([]);
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)); }
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setImageFiles(prev => [...prev, ...files]);
+      setImagePreviews(prev => [...prev, ...files.map(file => URL.createObjectURL(file))]);
+    }
   }
 
   function handleEditImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) { setEditImageFile(file); setEditImagePreview(URL.createObjectURL(file)); }
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setEditImageFiles(prev => [...prev, ...files]);
+      setEditImagePreviews(prev => [...prev, ...files.map(file => URL.createObjectURL(file))]);
+    }
   }
 
   function handleAdd() {
     const fd = new FormData();
     fd.append('name', addName);
-    fd.append('category_slug', addCategory.toLowerCase().replace(/\s+/g, '-'));
     fd.append('price', addPrice);
     fd.append('stock', addStock);
     fd.append('sizes', addSizes);
-    fd.append('description', addDescription);
-    if (imageFile) fd.append('image_file', imageFile);
+    fd.append('colors', addColors);
+    fd.append('category_slug', addCategory.trim());
+    fd.append('variants_json', JSON.stringify(addVariants));
+    fd.append('short_description', addShortDescription.trim());
+    fd.append('description', addDescription.trim());
+    imageFiles.forEach(file => fd.append('image_file', file));
     createMutation.mutate(fd);
   }
 
   function handleSaveEdit() {
     if (!editProduct) return;
+    if (!editName.trim() || !editPrice) {
+      toast.error('Name and Price are required.');
+      return;
+    }
+
     const fd = new FormData();
-    fd.append('price', editPrice);
-    fd.append('stock', editStock);
+    fd.append('name', editName.trim());
+    fd.append('stock', editStock || '0');
     fd.append('sizes', editSizes);
-    if (editImageFile) fd.append('image_file', editImageFile);
+    fd.append('colors', editColors);
+    fd.append('category_slug', editCategory.trim());
+    fd.append('variants_json', JSON.stringify(editVariants));
+    fd.append('short_description', editShortDescription.trim());
+    fd.append('description', editDescription.trim());
+    editImageFiles.forEach(file => fd.append('image_file', file));
     updateMutation.mutate({ id: editProduct.id, fd });
   }
 
@@ -316,33 +351,102 @@ export default function ProductsPage() {
                 <Input id="addPrice" placeholder="65.00" type="number" min={0} value={addPrice} onChange={e => setAddPrice(e.target.value)} />
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="addStock">Stock</Label>
-                <Input id="addStock" placeholder="42" type="number" min={0} value={addStock} onChange={e => setAddStock(e.target.value)} />
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Inventory by Variant (Size & Stock)</Label>
+                <Button 
+                  type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2"
+                  onClick={() => setAddVariants([...addVariants, {size: '', stock: 0}])}
+                >
+                  + Add Variant
+                </Button>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="addSizes">Sizes (comma-separated)</Label>
-                <Input id="addSizes" placeholder="S,M,L,XL" value={addSizes} onChange={e => setAddSizes(e.target.value)} />
+              <div className="rounded-xl border border-black/8 overflow-hidden divide-y divide-black/5">
+                <div className="grid grid-cols-2 bg-muted/40 px-4 py-2.5">
+                  <span className="text-xs font-medium text-muted-foreground">Size (e.g. S, XL, 42)</span>
+                  <span className="text-xs font-medium text-muted-foreground">Stock Quantity</span>
+                </div>
+                {addVariants.map((v, idx) => (
+                  <div key={idx} className="grid grid-cols-2 items-center gap-4 px-4 py-2 bg-white">
+                    <Input 
+                      value={v.size} 
+                      onChange={e => {
+                        const newV = [...addVariants];
+                        newV[idx].size = e.target.value;
+                        setAddVariants(newV);
+                      }}
+                      className="h-8 text-xs font-bold uppercase"
+                      placeholder="Size"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Input 
+                        type="number"
+                        value={v.stock} 
+                        onChange={e => {
+                          const newV = [...addVariants];
+                          newV[idx].stock = parseInt(e.target.value) || 0;
+                          setAddVariants(newV);
+                        }}
+                        className="h-8 text-xs"
+                      />
+                      <Button 
+                        type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400 hover:text-red-600"
+                        onClick={() => setAddVariants(addVariants.filter((_, i) => i !== idx))}
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="addDesc">Description</Label>
-              <Input id="addDesc" placeholder="Short product description" value={addDescription} onChange={e => setAddDescription(e.target.value)} />
+              <Label htmlFor="addColors">Colors (comma-separated hex codes)</Label>
+              <Input id="addColors" placeholder="#000000,#FFFFFF" value={addColors} onChange={e => setAddColors(e.target.value)} />
             </div>
-            <div className="space-y-2">
-              <Label>Product Image</Label>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="w-full sm:w-48 h-32 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-black/15 text-muted-foreground hover:border-primary/40 transition-colors overflow-hidden"
-              >
-                {imagePreview
-                  ? <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
-                  : <><UploadCloud className="h-5 w-5" /><span className="text-xs">Add product image</span></>
-                }
-              </button>
+            <div className="space-y-1.5">
+              <Label htmlFor="addShortDesc">Short Description</Label>
+              <Input id="addShortDesc" placeholder="Brief summary..." value={addShortDescription} onChange={e => setAddShortDescription(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="addDesc">Detailed Description</Label>
+              <textarea 
+                id="addDesc" 
+                placeholder="Full product details..." 
+                value={addDescription} 
+                onChange={e => setAddDescription(e.target.value)} 
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                rows={4} 
+              />
+            </div>
+            <div className="space-y-3">
+              <Label>Product Images (Gallery)</Label>
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleImageChange} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {imagePreviews.map((url, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-black/10 group">
+                    <img src={url} alt={`Preview ${idx}`} className="h-full w-full object-cover" />
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setImagePreviews(prev => prev.filter((_, i) => i !== idx));
+                        setImageFiles(prev => prev.filter((_, i) => i !== idx));
+                      }}
+                      className="absolute top-1 right-1 h-6 w-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="aspect-square flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-black/15 text-muted-foreground hover:border-primary/40 transition-colors overflow-hidden"
+                >
+                  <UploadCloud className="h-5 w-5" />
+                  <span className="text-[10px]">Add Image</span>
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 border-t border-black/5 px-6 py-4">
@@ -377,58 +481,130 @@ export default function ProductsPage() {
           <div className="px-6 py-5 space-y-6 overflow-y-auto max-h-[65vh]">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
+                <Label htmlFor="editName">Product Name</Label>
+                <Input id="editName" placeholder="e.g., Premium ADHD T-Shirt" value={editName} onChange={e => setEditName(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
                 <Label htmlFor="editPrice">Price ($)</Label>
                 <Input id="editPrice" type="number" min={0} value={editPrice} onChange={e => setEditPrice(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="editCategory">Category Slug</Label>
+                <Input id="editCategory" placeholder="e.g., apparel" value={editCategory} onChange={e => setEditCategory(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="editStock">Total Stock</Label>
                 <Input id="editStock" type="number" min={0} value={editStock} onChange={e => setEditStock(e.target.value)} />
               </div>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="editSizes">Sizes (comma-separated)</Label>
+                <Input id="editSizes" placeholder="S,M,L,XL" value={editSizes} onChange={e => setEditSizes(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="editColors">Colors (comma-separated hex)</Label>
+                <Input id="editColors" placeholder="#000000,#FFFFFF" value={editColors} onChange={e => setEditColors(e.target.value)} />
+              </div>
+            </div>
             <div className="space-y-1.5">
-              <Label htmlFor="editSizes">Sizes (comma-separated)</Label>
-              <Input id="editSizes" placeholder="S,M,L,XL" value={editSizes} onChange={e => setEditSizes(e.target.value)} />
+              <Label htmlFor="editShortDesc">Short Description</Label>
+              <Input id="editShortDesc" placeholder="Brief summary..." value={editShortDescription} onChange={e => setEditShortDescription(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="editDesc">Detailed Description</Label>
+              <textarea 
+                id="editDesc" 
+                value={editDescription} 
+                onChange={e => setEditDescription(e.target.value)} 
+                className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                rows={4} 
+              />
             </div>
 
-            {/* Inventory Variants (read-only display from API) */}
-            {editVariants.length > 0 && (
-              <div className="space-y-3">
-                <Label className="text-sm font-semibold">Current Inventory by Variant</Label>
-                <div className="rounded-xl border border-black/8 overflow-hidden divide-y divide-black/5">
-                  <div className="grid grid-cols-2 bg-muted/40 px-4 py-2.5">
-                    <span className="text-xs font-medium text-muted-foreground">Size</span>
-                    <span className="text-xs font-medium text-muted-foreground">Stock</span>
-                  </div>
-                  {editVariants.map((v) => (
-                    <div key={v.size} className="grid grid-cols-2 items-center px-4 py-3">
-                      <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-black/10 bg-white text-xs font-semibold">{v.size}</span>
-                      <span className="text-sm text-foreground">{v.stock}</span>
-                    </div>
-                  ))}
-                </div>
+            {/* Inventory Variants */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">Inventory by Variant (Size & Stock)</Label>
+                <Button 
+                  type="button" variant="outline" size="sm" className="h-7 text-[10px] px-2"
+                  onClick={() => setEditVariants([...editVariants, {size: '', stock: 0}])}
+                >
+                  + Add Variant
+                </Button>
               </div>
-            )}
-
-            {/* Product Image */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Product Image</Label>
-              <input ref={editFileRef} type="file" accept="image/*" className="hidden" onChange={handleEditImageChange} />
-              <div className="flex items-end gap-4">
-                <div className="h-24 w-24 shrink-0 rounded-xl overflow-hidden border border-black/10 bg-slate-100">
-                  {editImagePreview
-                    ? <img src={editImagePreview} alt="Product" className="h-full w-full object-cover" />
-                    : <div className="h-full w-full flex items-center justify-center text-muted-foreground"><Box className="h-8 w-8" /></div>
-                  }
+              <div className="rounded-xl border border-black/8 overflow-hidden divide-y divide-black/5">
+                <div className="grid grid-cols-2 bg-muted/40 px-4 py-2.5">
+                  <span className="text-xs font-medium text-muted-foreground">Size</span>
+                  <span className="text-xs font-medium text-muted-foreground">Stock</span>
                 </div>
+                {editVariants.map((v, idx) => (
+                  <div key={idx} className="grid grid-cols-2 items-center gap-4 px-4 py-2 bg-white">
+                    <Input 
+                      value={v.size} 
+                      onChange={e => {
+                        const newV = [...editVariants];
+                        newV[idx].size = e.target.value;
+                        setEditVariants(newV);
+                      }}
+                      className="h-8 text-xs font-bold uppercase"
+                    />
+                    <div className="flex items-center gap-2">
+                      <Input 
+                        type="number"
+                        value={v.stock} 
+                        onChange={e => {
+                          const newV = [...editVariants];
+                          newV[idx].stock = parseInt(e.target.value) || 0;
+                          setEditVariants(newV);
+                        }}
+                        className="h-8 text-xs"
+                      />
+                      <Button 
+                        type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400 hover:text-red-600"
+                        onClick={() => setEditVariants(editVariants.filter((_, i) => i !== idx))}
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-semibold">Product Images (Gallery)</Label>
+              <input ref={editFileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleEditImageChange} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {editImagePreviews.map((url, idx) => (
+                  <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-black/10 group">
+                    <img src={url} alt={`Preview ${idx}`} className="h-full w-full object-cover" />
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setEditImagePreviews(prev => prev.filter((_, i) => i !== idx));
+                        // If it was a newly added file, remove it from editImageFiles too
+                        // This logic is a bit simplified as it treats all as replaceable on save
+                      }}
+                      className="absolute top-1 right-1 h-6 w-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
                 <button
                   type="button"
                   onClick={() => editFileRef.current?.click()}
-                  className="flex flex-col items-center justify-center gap-2 h-24 flex-1 rounded-xl border-2 border-dashed border-black/15 text-muted-foreground hover:border-primary/40 transition-colors text-xs"
+                  className="aspect-square flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-black/15 text-muted-foreground hover:border-primary/40 transition-colors overflow-hidden"
                 >
                   <UploadCloud className="h-5 w-5" />
-                  Replace image
+                  <span className="text-[10px]">Add Image</span>
                 </button>
               </div>
+              <p className="text-[10px] text-muted-foreground">Note: Uploading new images will replace the current gallery.</p>
             </div>
           </div>
 

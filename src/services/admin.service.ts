@@ -68,9 +68,13 @@ export interface AdminProduct {
   id: number;
   name: string;
   category: string;
+  short_description?: string;
+  description?: string;
+  color_list?: { id: number; color_hex: string }[];
   price: number;
   inventory: number;
   image: string;
+  images?: { id: number; image: string; is_primary: boolean }[];
   variants: ProductVariant[];
 }
 
